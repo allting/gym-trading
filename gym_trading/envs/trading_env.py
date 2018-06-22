@@ -190,7 +190,7 @@ class TradingEnv(gym.Env):
     self.action_space = spaces.Discrete( 3 )
     self.observation_space= spaces.Box( self.src.min_values,
                                         self.src.max_values)
-    self.reset()
+    self._reset()
 
   def _configure(self, display=None):
     self.display = display
@@ -224,7 +224,7 @@ class TradingEnv(gym.Env):
   
   def run_strat(self,  strategy, return_df=True):
     """run provided strategy, returns dataframe with all steps"""
-    observation = self.reset()
+    observation = self._reset()
     done = False
     while not done:
       action = strategy( observation, self ) # call strategy
@@ -232,13 +232,14 @@ class TradingEnv(gym.Env):
 
     return self.sim.to_df() if return_df else None
       
-  def run_strats( self, strategy, episodes=1, write_log=True, return_df=True):
+  def run_strats( self, strategy, episodes=1, write_log=False, return_df=True):
     """ run provided strategy the specified # of times, possibly
         writing a log and possibly returning a dataframe summarizing activity.
     
         Note that writing the log is expensive and returning the df is moreso.  
         For training purposes, you might not want to set both.
     """
+    need_df = True
     logfile = None
     if write_log:
       logfile = tempfile.NamedTemporaryFile(delete=False)
@@ -251,7 +252,7 @@ class TradingEnv(gym.Env):
       df = self.run_strat(strategy, return_df=need_df)
       if write_log:
         df.to_csv(logfile, mode='a')
-        if return_df:
-          alldf = df if alldf is None else pd.concat([alldf,df], axis=0)
+      if return_df:
+        alldf = df if alldf is None else pd.concat([alldf,df], axis=0)
             
     return alldf
