@@ -11,7 +11,7 @@ env = gym.make('trading-v0')
 
 #env.time_cost_bps = 0
 
-Episodes=1
+Episodes=5
 
 obs = []
 
@@ -31,10 +31,19 @@ for _ in range(Episodes):
 
 df = env.env.sim.to_df()
 
-df.head()
-df.tail()
+print(df.head())
+print(df.tail())
 
 buyhold = lambda x,y : 2
 df = env.env.run_strat( buyhold )
+print('BuyHold\n{}'.format(df.tail()))
+
+randomtrader = lambda o,e: e.action_space.sample() # retail trader
+df = env.env.run_strat( randomtrader )
+print('RandomTrader\n{}'.format(df.tail()))
 
 df10 = env.env.run_strats( buyhold, Episodes )
+print('BuyHold(Episodes={})\n{}'.format(Episodes, df10.tail()))
+
+df10 = env.env.run_strats( randomtrader, Episodes )
+print('RandomTrader(Episodes={})\n{}'.format(Episodes, df10.tail()))

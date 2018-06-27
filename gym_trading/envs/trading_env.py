@@ -37,7 +37,9 @@ class QuandlEnvSrc(object):
 
   MinPercentileDays = 100 
   QuandlAuthToken = ""  # not necessary, but can be used if desired
-  Name = "TSE/9994" # https://www.quandl.com/search (use 'Free' filter)
+  # Name = "TSE/9994" # https://www.quandl.com/search (use 'Free' filter)
+  # Name = 'BITSTAMP/USD'
+  Name = 'BITFINEX/BTCUSD'
 
   def __init__(self, days=252, name=Name, auth=QuandlAuthToken, scale=True ):
     self.name = name
@@ -46,7 +48,10 @@ class QuandlEnvSrc(object):
     log.info('getting data for %s from quandl...',QuandlEnvSrc.Name)
     df = quandl.get(self.name) if self.auth=='' else quandl.get(self.name, authtoken=self.auth)
     log.info('got data for %s from quandl...',QuandlEnvSrc.Name)
-    
+    df.columns = ['High', 'Low', 'Mid', 'Close', 'Bid', 'Ask', 'Volume']
+
+    # self.days = len(df)
+
     df = df[ ~np.isnan(df.Volume)][['Close','Volume']]
     # we calculate returns and percentiles, then kill nans
     df = df[['Close','Volume']]   
