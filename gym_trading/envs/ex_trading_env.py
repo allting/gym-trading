@@ -17,6 +17,8 @@ obs = []
 
 for _ in range(Episodes):
     observation = env.reset()
+    env.render()
+
     done = False
     count = 0
     while not done:
@@ -25,6 +27,9 @@ for _ in range(Episodes):
         obs = obs + [observation]
         #print observation,reward,done,info
         count += 1
+
+        env.render()
+
         if done:
             print(reward)
             print(count)
