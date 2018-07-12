@@ -22,6 +22,8 @@ log = logging.getLogger(__name__)
 log.info('%s logger started.',__name__)
 
 
+OBS_SIZE = 30
+
 def _sharpe(Returns, freq=252) :
   """Given a set of returns, calculates naive (rfr=0) sharpe """
   return (np.sqrt(freq) * np.mean(Returns))/np.std(Returns)
@@ -47,7 +49,7 @@ class QuandlEnvSrc(object):
   # Name = 'BITSTAMP/USD'
   Name = 'BITFINEX/BTCUSD'
 
-  def __init__(self, days=252, name=Name, auth=QuandlAuthToken, scale=True ):
+  def __init__(self, days=252, obs_len=OBS_SIZE, name=Name, auth=QuandlAuthToken, scale=True ):
     self.name = name
     self.auth = auth
     self.days = days+1
@@ -75,6 +77,7 @@ class QuandlEnvSrc(object):
     self.max_values = df.max(axis=0)
     self.data = df
     self.step = 0
+    self.obs_len = obs_len
 
     self.days = len(df)
 
@@ -82,12 +85,12 @@ class QuandlEnvSrc(object):
   def reset(self):
     # we want contiguous data
     # self.idx = np.random.randint( low = 0, high=len(self.data.index)-self.days )
-    self.idx = 0
-    self.step = 0
+    self.idx = self.obs_len
+    self.step = self.obs_len
 
   def _step(self):
     try:
-      obs = self.data.iloc[self.idx].as_matrix()
+      obs = self.data[self.idx-self.obs_len:self.idx].as_matrix()
     except Exception as e:
       print('error:{}'.format(e))
 
@@ -102,13 +105,14 @@ class QuandlEnvSrc(object):
 class TradingSim(object) :
   """ Implements core trading simulator for single-instrument univ """
 
-  def __init__(self, steps, trading_cost_bps = 1e-3, time_cost_bps = 1e-4):
+  def __init__(self, steps, obs_len=OBS_SIZE, trading_cost_bps = 1e-3, time_cost_bps = 1e-4):
     # invariant for object life
     self.trading_cost_bps = trading_cost_bps
     self.time_cost_bps    = time_cost_bps
     self.steps            = steps
+    self.obs_len          = obs_len
     # change every step
-    self.step             = 0
+    self.step             = self.obs_len
     self.actions          = np.zeros(self.steps)
     self.navs             = np.ones(self.steps)
     self.mkt_nav         = np.ones(self.steps)
@@ -120,7 +124,7 @@ class TradingSim(object) :
     self.render_on        = 0
     
   def reset(self):
-    self.step = 0
+    self.step = self.obs_len
     self.actions.fill(0)
     self.navs.fill(1)
     self.mkt_nav.fill(1)
@@ -176,31 +180,33 @@ class TradingSim(object) :
     return df
 
 class Render(object):
-  def __init__(self, df):
+  def __init__(self, df, obs_len=OBS_SIZE):
         self.render_on = 0
         self.data = df
+        self.obs_len = obs_len
 
   def reset(self):
         self.render_on = 0
 
   def _plot_trading(self, step, actions):
       close = self.data.Close
-      obs_len = 252 
-      price = close[:step+obs_len]
+      obs_len = self.obs_len 
+      price = close[:step]
+      obs_price = price[-obs_len:]
       price_x = list(range(len(price)))
       returns = self.data.Return
-      features = np.array([returns[:step+obs_len], price]).T
+      features = np.array([returns[:step], price]).T
       feature_len = 2
 
       features_color = [c.rgb+(0.9,) for c in Color('yellow').range_to(Color('cyan'), feature_len)]
 
       self.price_plot = self.ax.plot(price_x, price, c=(0, 0.68, 0.95, 0.9),zorder=1)
-      self.features_plot = [self.ax3.plot(price_x, features[:step+obs_len, i], 
+      self.features_plot = [self.ax3.plot(price_x, features[:, i], 
                                           c=features_color[i])[0] for i in range(feature_len)]
-      rect_high = price.max() - price.min()
+      rect_high = obs_price.max() - obs_price.min()
       self.target_box = self.ax.add_patch(
                           patches.Rectangle(
-                          (step, price.min()), obs_len, rect_high,
+                          (step-obs_len, obs_price.min()), obs_len, rect_high,
                           label='observation',edgecolor=(0.9, 1, 0.2, 0.8),facecolor=(0.95,1,0.1,0.3),
                           linestyle='-',linewidth=1.5,
                           fill=True)
@@ -226,7 +232,7 @@ class Render(object):
       #                                             where=self.reward_arr[:self.step_st+self.obs_len].cumsum()<=0,
       #                                             facecolor=(0, 1, 0, 0.2), edgecolor=(0, 1, 0, 0.9), linewidth=1)
 
-      action = actions[:step+obs_len]
+      action = actions[:step]
       trade_x = action.nonzero()[0]
       trade_x_buy = [i for i in trade_x if actions[i]==1]
       trade_x_sell = [i for i in trade_x if actions[i]==2]
@@ -242,9 +248,7 @@ class Render(object):
 
   def render(self, step, actions):
       close = self.data.Close
-      obs_len = 252 
-      price = close[:step+obs_len]
-      action = actions[:step+obs_len]
+      price = close[:step]
  
       if self.render_on == 0:
           matplotlib.style.use('dark_background')
@@ -264,7 +268,7 @@ class Render(object):
           self.ax.grid(color='gray', linestyle='-', linewidth=0.5)
           self.ax2.grid(color='gray', linestyle='-', linewidth=0.5)
           self.ax3.grid(color='gray', linestyle='-', linewidth=0.5)
-          self.features_color = [c.rgb+(0.9,) for c in Color('yellow').range_to(Color('cyan'), obs_len)]
+          self.features_color = [c.rgb+(0.9,) for c in Color('yellow').range_to(Color('cyan'), 2)]
           #fig, ax = plt.subplots()
           self._plot_trading(step, actions)
 
@@ -332,8 +336,11 @@ class TradingEnv(gym.Env):
     self.chart = Render(df=self.src.data)
 
     self.action_space = spaces.Discrete( 3 )
-    self.observation_space= spaces.Box( self.src.min_values,
-                                        self.src.max_values)
+    # self.observation_space= spaces.Box( self.src.min_values,
+    #                                     self.src.max_values)
+    self.observation_space= spaces.Box( 0,
+                                        self.src.days,
+                                        shape=(OBS_SIZE,5))
     self._reset()
 
   def _configure(self, display=None):
@@ -347,9 +354,9 @@ class TradingEnv(gym.Env):
     assert self.action_space.contains(action), "%r (%s) invalid"%(action, type(action))
     observation, done = self.src._step()
     # Close    Volume     Return  ClosePctl  VolumePctl
-    yret = observation[2]
+    yret = observation[:,2]
 
-    reward, info = self.sim._step( action, yret )
+    reward, info = self.sim._step( action, yret[0] )
       
     #info = { 'pnl': daypnl, 'nav':self.nav, 'costs':costs }
 

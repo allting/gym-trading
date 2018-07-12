@@ -9,6 +9,7 @@ import tensorflow as tf
 import dqn
 import random
 from typing import List
+import timeit
 
 pd.set_option('display.width',500)
 
@@ -19,12 +20,12 @@ env = gym.make('trading-v0')
 env._max_episode_steps = None
 
 env = gym.wrappers.Monitor(env, 'gym-results/', force=True)
-INPUT_SIZE = env.observation_space.shape[0]
+INPUT_SHAPE = env.observation_space.shape
 OUTPUT_SIZE = env.action_space.n
 
 DISCOUNT_RATE = 0.99
 REPLAY_MEMORY = 50000
-MAX_EPISODES = 50
+MAX_EPISODES = 10
 BATCH_SIZE = 64
 TARGET_UPDATE_FREQUENCY = 5
 
@@ -40,7 +41,7 @@ def replay_train(mainDQN: dqn.DQN, targetDQN: dqn.DQN, train_batch: list) -> flo
     Q_target = rewards + DISCOUNT_RATE * np.max(targetDQN.predict(next_states), axis=1) * ~done
 
     y = mainDQN.predict(states)
-    y[np.arange(len(X)), actions] = Q_target
+    y[np.arange(int(len(X)/INPUT_SHAPE[0])), actions] = Q_target
 
     # Train our network using target and predicted Q values on each episode
     return mainDQN.update(X, y)
@@ -78,14 +79,15 @@ def bot_play(mainDQN: dqn.DQN, env: gym.Env) -> None:
 
 
 def main():
+    start = timeit.default_timer()
     # store the previous observations in replay memory
     replay_buffer = deque(maxlen=REPLAY_MEMORY)
 
     last_100_game_reward = deque(maxlen=100)
 
     with tf.Session() as sess:
-        mainDQN = dqn.DQN(sess, INPUT_SIZE, OUTPUT_SIZE, name="main")
-        targetDQN = dqn.DQN(sess, INPUT_SIZE, OUTPUT_SIZE, name="target")
+        mainDQN = dqn.DQN(sess, INPUT_SHAPE, OUTPUT_SIZE, name="main")
+        targetDQN = dqn.DQN(sess, INPUT_SHAPE, OUTPUT_SIZE, name="target")
         sess.run(tf.global_variables_initializer())
 
         # initial copy q_net -> target_net
@@ -100,6 +102,8 @@ def main():
             state = env.reset()
             total_reward = 0
             last_info = None
+
+            episode_start = timeit.default_timer()
 
             while not done:
                 if np.random.rand() < e:
@@ -120,8 +124,8 @@ def main():
                 if len(replay_buffer) > BATCH_SIZE:
                     minibatch = random.sample(replay_buffer, BATCH_SIZE)
                     loss, train = replay_train(mainDQN, targetDQN, minibatch)
-                    if step_count % 30 == 0:
-                        print('\t{}-Loss:{}, train:{}'.format(episode, loss, train))
+                    if step_count % 100 == 0:
+                        print('\t{}/{}-Loss:{}, train:{}'.format(episode, step_count, loss, train))
 
                 if step_count % TARGET_UPDATE_FREQUENCY == 0:
                     sess.run(copy_ops)
@@ -131,7 +135,9 @@ def main():
                 total_reward += reward
                 last_info = info
 
-            print("Episode: {}  steps: {}, reward: {}, last_info:{}".format(episode, step_count, total_reward, last_info))
+            episode_stop = timeit.default_timer()
+            print("Episode: {}  steps: {}, reward: {}, last_info:{}, durations:{}".format(episode, step_count, total_reward, last_info, episode_stop-episode_start))
+            replay_buffer.clear()
 
             # CartPole-v0 Game Clear Checking Logic
             last_100_game_reward.append(step_count)
@@ -143,6 +149,9 @@ def main():
                     print(f"Game Cleared in {episode} episodes with avg reward {avg_reward}")
                     break
         
+        stop = timeit.default_timer()
+        print('Estimate time {} for {} Episodes'.format(stop-start, MAX_EPISODES))
+
         bot_play(targetDQN, env)
 
 

@@ -10,6 +10,7 @@ pd.set_option('display.width',500)
 env = gym.make('trading-v0')
 
 #env.time_cost_bps = 0
+print('Observation size:{}'.format(env.observation_space))
 
 Episodes=5
 
