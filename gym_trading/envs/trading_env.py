@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from colour import Color
 
+from talib.abstract import *
 
 log = logging.getLogger(__name__)
 log.info('%s logger started.',__name__)
@@ -49,18 +50,40 @@ class QuandlEnvSrc(object):
   # Name = 'BITSTAMP/USD'
   Name = 'BITFINEX/BTCUSD'
 
-  def __init__(self, days=252, obs_len=OBS_SIZE, name=Name, auth=QuandlAuthToken, scale=True ):
+  def __init__(self, days=252, obs_len=OBS_SIZE, name=Name, auth=QuandlAuthToken, scale=False ):
     self.name = name
     self.auth = auth
     self.days = days+1
     log.info('getting data for %s from quandl...',QuandlEnvSrc.Name)
     df = quandl.get(self.name) if self.auth=='' else quandl.get(self.name, authtoken=self.auth)
     log.info('got data for %s from quandl...',QuandlEnvSrc.Name)
-    df.columns = ['High', 'Low', 'Mid', 'Close', 'Bid', 'Ask', 'Volume']
 
-    df = df[ ~np.isnan(df.Volume)][['Close','Volume']]
+    df.columns = ['High', 'Low', 'Mid', 'Close', 'Bid', 'Ask', 'Volume']
+    df_dict = {
+      'high':df.High,
+      'low':df.Low,
+      'close':df.Close,
+      'volume':df.Volume
+    }
+
+    df['SMA'] = SMA(df_dict, timeperiod=25, price='close')
+    df['BB_Upper'], df['BB_Middle'], df['BB_Lower'] = BBANDS(df_dict, 20, 2, 2, prices=['high', 'low', 'close'])
+    df['STCH_SlowK'], df['STCH_SlowD'] = STOCH(df_dict, prices=['high', 'low', 'close'])
+    df['MACD'], df['MACD_Signal'], df['MACD_Hist'] = MACD(df_dict, fastperiod=12, slowperiod=26, signalperiod=9, prices='close')
+    
+    macd_analyst = [0]*len(df)
+    for i in range(1, len(df)):
+      if df['MACD_Signal'][i] < df['MACD'][i] and df['MACD'][i-1] <= df['MACD_Signal'][i-1]:
+        macd_analyst[i] = 2 # BUY
+      elif df['MACD'][i] < df['MACD_Signal'][i] and df['MACD_Signal'][i-1] <= df['MACD'][i-1]:
+        macd_analyst[i] = 1 # Sell
+      # else:
+      #   macd_analyst.append(0) # Hold
+    df['MACD_Analyst'] = macd_analyst
+
+    # df = df[ ~np.isnan(df.Volume)][['Close','Volume']]
     # we calculate returns and percentiles, then kill nans
-    df = df[['Close','Volume']]   
+    # df = df[['Close','Volume']]   
     df.Volume.replace(0,1,inplace=True) # days shouldn't have zero volume..
     df['Return'] = (df.Close-df.Close.shift())/df.Close.shift()
     pctrank = lambda x: pd.Series(x).rank(pct=True).iloc[-1]
@@ -72,7 +95,9 @@ class QuandlEnvSrc(object):
       mean_values = df.mean(axis=0)
       std_values = df.std(axis=0)
       df = (df - np.array(mean_values))/ np.array(std_values)
+
     df['Return'] = R # we don't want our returns scaled
+
     self.min_values = df.min(axis=0)
     self.max_values = df.max(axis=0)
     self.data = df
@@ -98,7 +123,7 @@ class QuandlEnvSrc(object):
     self.step += 1
     done = self.step >= self.days
     if done == True:
-          print('step:{}, daays:{}'.format(self.step, self.days))
+          print('step:{}, days:{}'.format(self.step, self.days))
 
     return obs,done
 
@@ -134,31 +159,42 @@ class TradingSim(object) :
     self.trades.fill(0)
     self.mkt_retrns.fill(0)
     
-  def _step(self, action, retrn ):
+  def _step(self, action, obs ):
+  # def _step(self, action, retrn ):
     """ Given an action and return for prior period, calculates costs, navs,
         etc and returns the reward and a  summary of the day's activity. """
 
-    bod_posn = 0.0 if self.step == 0 else self.posns[self.step-1]
-    bod_nav  = 1.0 if self.step == 0 else self.navs[self.step-1]
-    mkt_nav  = 1.0 if self.step == 0 else self.mkt_nav[self.step-1]
+    # bod_posn = 0.0 if self.step == 0 else self.posns[self.step-1]
+    # bod_nav  = 1.0 if self.step == 0 else self.navs[self.step-1]
+    # mkt_nav  = 1.0 if self.step == 0 else self.mkt_nav[self.step-1]
 
-    self.mkt_retrns[self.step] = retrn
-    self.actions[self.step] = action
+    # self.mkt_retrns[self.step] = retrn
+    # self.actions[self.step] = action
     
-    self.posns[self.step] = action - 1     
-    self.trades[self.step] = self.posns[self.step] - bod_posn
+    # self.posns[self.step] = action - 1     
+    # self.trades[self.step] = self.posns[self.step] - bod_posn
     
-    trade_costs_pct = abs(self.trades[self.step]) * self.trading_cost_bps 
-    self.costs[self.step] = trade_costs_pct +  self.time_cost_bps
-    reward = ( (bod_posn * retrn) - self.costs[self.step] )
-    self.strat_retrns[self.step] = reward
+    # trade_costs_pct = abs(self.trades[self.step]) * self.trading_cost_bps 
+    # self.costs[self.step] = trade_costs_pct +  self.time_cost_bps
+    # reward = ( (bod_posn * retrn) - self.costs[self.step] )
+    # self.strat_retrns[self.step] = reward
 
-    if self.step != 0 :
-      self.navs[self.step] =  bod_nav * (1 + self.strat_retrns[self.step-1])
-      self.mkt_nav[self.step] =  mkt_nav * (1 + self.mkt_retrns[self.step-1])
+    # if self.step != 0 :
+    #   self.navs[self.step] =  bod_nav * (1 + self.strat_retrns[self.step-1])
+    #   self.mkt_nav[self.step] =  mkt_nav * (1 + self.mkt_retrns[self.step-1])
     
-    info = { 'reward': reward, 'nav':self.navs[self.step], 'costs':self.costs[self.step], 'step':self.step }
+    # info = { 'reward': reward, 'nav':self.navs[self.step], 'costs':self.costs[self.step], 'step':self.step }
 
+    retrn = obs[:, 2][-1]
+    reward = 0
+    if (action == 0 and retrn < 0) or (action == 2 and 0 < retrn):
+      reward = 1
+    elif (action == 0 and 0 < retrn) or (action == 2 and retrn < 0):
+      reward = -1
+    else:
+      reward = 0
+
+    info = {}
     self.step += 1      
     return reward, info
 
@@ -338,9 +374,10 @@ class TradingEnv(gym.Env):
     self.action_space = spaces.Discrete( 3 )
     # self.observation_space= spaces.Box( self.src.min_values,
     #                                     self.src.max_values)
+    columns = len(self.src.data.columns)
     self.observation_space= spaces.Box( 0,
                                         self.src.days,
-                                        shape=(OBS_SIZE,5))
+                                        shape=(OBS_SIZE, columns))
     self._reset()
 
   def _configure(self, display=None):
@@ -354,9 +391,9 @@ class TradingEnv(gym.Env):
     assert self.action_space.contains(action), "%r (%s) invalid"%(action, type(action))
     observation, done = self.src._step()
     # Close    Volume     Return  ClosePctl  VolumePctl
-    yret = observation[:,2]
+    # yret = observation[:,2]
 
-    reward, info = self.sim._step( action, yret[0] )
+    reward, info = self.sim._step( action, observation )
       
     #info = { 'pnl': daypnl, 'nav':self.nav, 'costs':costs }
 

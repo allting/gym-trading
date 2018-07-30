@@ -37,8 +37,8 @@ def replay_train(mainDQN: dqn.DQN, targetDQN: dqn.DQN, train_batch: list) -> flo
     done = np.array([x[4] for x in train_batch])
 
     X = states
-
-    Q_target = rewards + DISCOUNT_RATE * np.max(targetDQN.predict(next_states), axis=1) * ~done
+    result = targetDQN.predict(next_states)
+    Q_target = rewards + DISCOUNT_RATE * np.max(result, axis=1) * ~done
 
     y = mainDQN.predict(states)
     y[np.arange(int(len(X)/INPUT_SHAPE[0])), actions] = Q_target
