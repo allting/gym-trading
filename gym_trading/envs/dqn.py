@@ -32,7 +32,7 @@ class DQN:
         self.output_size = output_size
         self.net_name = name
         self.seq_length = 7
-        self.hidden_dim = 10
+        self.hidden_dim = 30
 
         self._build_network()
 
@@ -57,18 +57,40 @@ class DQN:
         #     optimizer = tf.train.AdamOptimizer(learning_rate=l_rate)
         #     self._train = optimizer.minimize(self._loss)
 
-        with tf.variable_scope(self.net_name):
-            self._X = tf.placeholder(tf.float32, [None, self.input_shape[0], self.input_shape[1]], name='input_x')
+        # with tf.variable_scope(self.net_name):
+        #     self._X = tf.placeholder(tf.float32, [None, self.input_shape[0], self.input_shape[1]], name='input_x')
 
-            cell = tf.contrib.rnn.BasicLSTMCell(num_units=self.hidden_dim, state_is_tuple=True, activation=tf.tanh)
-            outputs, _states = tf.nn.dynamic_rnn(cell, self._X, dtype=tf.float32)
-            self._Qpred = tf.contrib.layers.fully_connected(outputs[:, -1], self.output_size, activation_fn=None)
+        #     cell = tf.contrib.rnn.BasicLSTMCell(num_units=self.hidden_dim, state_is_tuple=True, activation=tf.tanh)
+        #     outputs, _states = tf.nn.dynamic_rnn(cell, self._X, dtype=tf.float32)
+        #     self._Qpred = tf.contrib.layers.fully_connected(outputs[:, -1], self.output_size, activation_fn=None)
 
-            self._Y = tf.placeholder(tf.float32, shape=[None, self.output_size])
-            self._loss = tf.reduce_sum(tf.square(self._Qpred - self._Y))
+        #     self._Y = tf.placeholder(tf.float32, shape=[None, self.output_size])
+        #     self._loss = tf.reduce_sum(tf.square(self._Qpred - self._Y))
             
+        #     optimizer = tf.train.AdamOptimizer(learning_rate=l_rate)
+        #     self._train = optimizer.minimize(self._loss)
+
+        with tf.variable_scope(self.net_name):
+            n_layers = 3
+            self.state = tf.placeholder(tf.float32, [None, self.input_shape[0], self.input_shape[1]], name='state')
+            self.actions = tf.placeholder(tf.int32, shape=[None, self.output_size], name='actions')
+
+            # cells = [tf.contrib.rnn.BasicLSTMCell(num_units=self.hidden_dim, activation=tf.tanh) for layer in range(n_layers)]
+            # multi_cell = tf.contrib.rnn.MultiRNNCell(cells)
+            # top_layer_h_state = states[-1][1]
+            layers = [tf.contrib.rnn.BasicLSTMCell(num_units=self.hidden_dim) for _ in range(n_layers)]
+            multi_cell = tf.contrib.rnn.MultiRNNCell(layers)
+            outputs, states = tf.nn.dynamic_rnn(multi_cell, self.state, dtype=tf.float32)
+
+            hidden_state = states[-1][1]
+            self.logits = tf.layers.dense(hidden_state, self.output_size, name='softmax')
+            xentropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.actions, logits=self.logits)
+            self._loss = tf.reduce_mean(xentropy, name='loss')
+
             optimizer = tf.train.AdamOptimizer(learning_rate=l_rate)
             self._train = optimizer.minimize(self._loss)
+            self._correct = tf.nn.in_top_k(self.logits, self.actions, 1)
+            self._accuracy = tf.reduce_mean(tf.cast(self._correct, tf.float32))
 
 
     def predict(self, state: np.ndarray) -> np.ndarray:
@@ -85,7 +107,8 @@ class DQN:
         except Exception as e:
             print('Error:{}'.format(e))
         
-        return self.session.run(self._Qpred, feed_dict={self._X: x})
+        # return self.session.run(self._Qpred, feed_dict={self.state: x})
+        return self.logits.eval(feed_dict={self.state: x})
 
     def update(self, x_stack: np.ndarray, y_stack: np.ndarray) -> list:
         """Performs updates on given X and y and returns a result
@@ -98,8 +121,9 @@ class DQN:
             list: First element is loss, second element is a result from train step
         """
         x = np.reshape(x_stack, [-1, self.input_shape[0], self.input_shape[1]])
+        y = np.reshape(y_stack, [-1, self.output_size])
         feed = {
-            self._X: x,
-            self._Y: y_stack
+            self.state: x,
+            self.actions: y
         }
         return self.session.run([self._loss, self._train], feed)
