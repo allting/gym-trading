@@ -32,7 +32,7 @@ class DQN:
         self.output_size = output_size
         self.net_name = name
         self.seq_length = 7
-        self.hidden_dim = 30
+        self.hidden_dim = 150
 
         self._build_network()
 
@@ -72,18 +72,19 @@ class DQN:
 
         with tf.variable_scope(self.net_name):
             n_layers = 3
-            self.state = tf.placeholder(tf.float32, [None, self.input_shape[0], self.input_shape[1]], name='state')
-            self.actions = tf.placeholder(tf.int32, shape=[None, self.output_size], name='actions')
+            self.state = tf.placeholder(tf.float32, [None, self.input_shape[0], self.input_shape[1]], name='state') # time, batch, in
+            self.actions = tf.placeholder(tf.int32, [None], name='actions') #
 
-            # cells = [tf.contrib.rnn.BasicLSTMCell(num_units=self.hidden_dim, activation=tf.tanh) for layer in range(n_layers)]
-            # multi_cell = tf.contrib.rnn.MultiRNNCell(cells)
-            # top_layer_h_state = states[-1][1]
-            layers = [tf.contrib.rnn.BasicLSTMCell(num_units=self.hidden_dim) for _ in range(n_layers)]
-            multi_cell = tf.contrib.rnn.MultiRNNCell(layers)
-            outputs, states = tf.nn.dynamic_rnn(multi_cell, self.state, dtype=tf.float32)
+            # layers = [tf.contrib.rnn.BasicLSTMCell(num_units=self.hidden_dim) for _ in range(n_layers)]
+            # multi_cell = tf.contrib.rnn.MultiRNNCell(layers)
+            # outputs, states = tf.nn.dynamic_rnn(multi_cell, self.state, dtype=tf.float32)
 
-            hidden_state = states[-1][1]
-            self.logits = tf.layers.dense(hidden_state, self.output_size, name='softmax')
+            # hidden_state = states[-1][1]
+
+            cell = tf.contrib.rnn.BasicLSTMCell(num_units=self.hidden_dim)
+            self.outputs, states = tf.nn.dynamic_rnn(cell, self.state, dtype=tf.float32)
+
+            self.logits = tf.layers.dense(states[1], self.output_size, name='softmax')
             xentropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.actions, logits=self.logits)
             self._loss = tf.reduce_mean(xentropy, name='loss')
 
@@ -107,8 +108,10 @@ class DQN:
         except Exception as e:
             print('Error:{}'.format(e))
         
-        # return self.session.run(self._Qpred, feed_dict={self.state: x})
+        # return self.session.run(self._train, feed_dict={self.state: x})
         return self.logits.eval(feed_dict={self.state: x})
+        # return np.argmax(result, axis=1)
+        # return tf.argmax(result, 1)
 
     def update(self, x_stack: np.ndarray, y_stack: np.ndarray) -> list:
         """Performs updates on given X and y and returns a result
@@ -120,10 +123,12 @@ class DQN:
         Returns:
             list: First element is loss, second element is a result from train step
         """
-        x = np.reshape(x_stack, [-1, self.input_shape[0], self.input_shape[1]])
-        y = np.reshape(y_stack, [-1, self.output_size])
+
+        x_data = np.reshape(x_stack, [-1, self.input_shape[0], self.input_shape[1]])
+        # y_data = np.reshape(y_stack, [-1, self.output_size])
         feed = {
-            self.state: x,
-            self.actions: y
+            self.state: x_data,
+            self.actions: y_stack
         }
+        # return self.session.run(self._train, feed)
         return self.session.run([self._loss, self._train], feed)

@@ -10,6 +10,7 @@ import dqn
 import random
 from typing import List
 import timeit
+import os
 
 pd.set_option('display.width',500)
 
@@ -25,7 +26,7 @@ OUTPUT_SIZE = env.action_space.n
 
 DISCOUNT_RATE = 0.99
 REPLAY_MEMORY = 50000
-MAX_EPISODES = 10
+MAX_EPISODES = 1
 BATCH_SIZE = 64
 TARGET_UPDATE_FREQUENCY = 5
 
@@ -36,15 +37,28 @@ def replay_train(mainDQN: dqn.DQN, targetDQN: dqn.DQN, train_batch: list) -> flo
     next_states = np.vstack([x[3] for x in train_batch])
     done = np.array([x[4] for x in train_batch])
 
+    # X = states
+    # result = targetDQN.predict(next_states)
+    # Q_target = rewards + DISCOUNT_RATE * np.max(result, axis=1) * ~done
+
+    # y = mainDQN.predict(states)
+    # y[np.arange(int(len(X)/INPUT_SHAPE[0])), actions] = Q_target
+
+    # Train our network using target and predicted Q values on each episode
+    # return mainDQN.update(X, y)
+
     X = states
     result = targetDQN.predict(next_states)
-    Q_target = rewards + DISCOUNT_RATE * np.max(result, axis=1) * ~done
+    # max_result = np.max(result, axis=1)
+    Q_target = DISCOUNT_RATE * result * ~done
+    # Q_target = rewards + DISCOUNT_RATE * result * ~done
 
     y = mainDQN.predict(states)
     y[np.arange(int(len(X)/INPUT_SHAPE[0])), actions] = Q_target
 
+    argmax_y = np.argmax(y, axis=1)
     # Train our network using target and predicted Q values on each episode
-    return mainDQN.update(X, y)
+    return mainDQN.update(X, argmax_y)
 
 
 def get_copy_var_ops(*, dest_scope_name: str, src_scope_name: str) -> List[tf.Operation]:
@@ -69,8 +83,10 @@ def bot_play(mainDQN: dqn.DQN, env: gym.Env) -> None:
     while True:
 
         env.render()
-        action = np.argmax(mainDQN.predict(state))
-        state, reward, done, _ = env.step(action)
+        action = mainDQN.predict(state)
+        action = np.argmax(action, axis=1)
+        print(action)
+        state, reward, done, _ = env.step(action[0])
         reward_sum += reward
 
         if done:
@@ -111,6 +127,7 @@ def main():
                 else:
                     # Choose an action by greedily from the Q-network
                     action = np.argmax(mainDQN.predict(state))
+                    action = np.argmax(action, axis=1)
 
                 # Get new state and reward from environment
                 next_state, reward, done, info = env.step(action)
@@ -151,6 +168,10 @@ def main():
         
         stop = timeit.default_timer()
         print('Estimate time {} for {} Episodes'.format(stop-start, MAX_EPISODES))
+
+        saver = tf.train.Saver()
+        save_path = saver.save(sess, os.getcwd()+"/model.ckpt")
+        print("Model saved in file: %s" % save_path)
 
         bot_play(targetDQN, env)
 

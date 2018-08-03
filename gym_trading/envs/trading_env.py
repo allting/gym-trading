@@ -55,6 +55,7 @@ class QuandlEnvSrc(object):
     self.auth = auth
     self.days = days+1
     log.info('getting data for %s from quandl...',QuandlEnvSrc.Name)
+    quandl.ApiConfig.api_key = 'cUGXJM56dEarfoXbwfGh'
     df = quandl.get(self.name) if self.auth=='' else quandl.get(self.name, authtoken=self.auth)
     log.info('got data for %s from quandl...',QuandlEnvSrc.Name)
 
@@ -169,7 +170,7 @@ class TradingSim(object) :
     # mkt_nav  = 1.0 if self.step == 0 else self.mkt_nav[self.step-1]
 
     # self.mkt_retrns[self.step] = retrn
-    # self.actions[self.step] = action
+    self.actions[self.step] = action
     
     # self.posns[self.step] = action - 1     
     # self.trades[self.step] = self.posns[self.step] - bod_posn
