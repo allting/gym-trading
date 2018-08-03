@@ -50,12 +50,11 @@ class QuandlEnvSrc(object):
   # Name = 'BITSTAMP/USD'
   Name = 'BITFINEX/BTCUSD'
 
-  def __init__(self, days=252, obs_len=OBS_SIZE, name=Name, auth=QuandlAuthToken, scale=False ):
+  def __init__(self, days=252, obs_len=OBS_SIZE, name=Name, auth=QuandlAuthToken, scale=True ):
     self.name = name
     self.auth = auth
     self.days = days+1
     log.info('getting data for %s from quandl...',QuandlEnvSrc.Name)
-    quandl.ApiConfig.api_key = 'cUGXJM56dEarfoXbwfGh'
     df = quandl.get(self.name) if self.auth=='' else quandl.get(self.name, authtoken=self.auth)
     log.info('got data for %s from quandl...',QuandlEnvSrc.Name)
 
@@ -92,12 +91,21 @@ class QuandlEnvSrc(object):
     df['VolumePctl'] = df.Volume.expanding(self.MinPercentileDays).apply(pctrank)
     df.dropna(axis=0,inplace=True)
     R = df.Return
+    dfSMA = df.SMA
+    dfBBUpper, dfBBMiddle, dfBBLower = df['BB_Upper'], df['BB_Middle'], df['BB_Lower']
+    dfSTCHSlowK, dfSTCHSlowD = df['STCH_SlowK'], df['STCH_SlowD']
+    dfMACD, dfMACDSignal, dfMACDHist = df['MACD'], df['MACD_Signal'], df['MACD_Hist']
+
     if scale:
       mean_values = df.mean(axis=0)
       std_values = df.std(axis=0)
       df = (df - np.array(mean_values))/ np.array(std_values)
 
     df['Return'] = R # we don't want our returns scaled
+    df['SMA'] = dfSMA
+    df['BB_Upper'], df['BB_Middle'], df['BB_Lower'] = dfBBUpper, dfBBMiddle, dfBBLower
+    df['STCH_SlowK'], df['STCH_SlowD'] = dfSTCHSlowK, dfSTCHSlowD
+    df['MACD'], df['MACD_Signal'], df['MACD_Hist'] = dfMACD, dfMACDSignal, dfMACDHist
 
     self.min_values = df.min(axis=0)
     self.max_values = df.max(axis=0)
@@ -116,7 +124,7 @@ class QuandlEnvSrc(object):
 
   def _step(self):
     try:
-      obs = self.data[self.idx-self.obs_len:self.idx].as_matrix()
+      obs = self.data[self.idx-self.obs_len:self.idx]
     except Exception as e:
       print('error:{}'.format(e))
 
@@ -127,6 +135,14 @@ class QuandlEnvSrc(object):
           print('step:{}, days:{}'.format(self.step, self.days))
 
     return obs,done
+
+  def _next_day_obs(self):
+    try:
+      obs = self.data.iloc[self.idx]
+    except Exception as e:
+      print('error:{}'.format(e))
+
+    return obs
 
 class TradingSim(object) :
   """ Implements core trading simulator for single-instrument univ """
@@ -160,42 +176,46 @@ class TradingSim(object) :
     self.trades.fill(0)
     self.mkt_retrns.fill(0)
     
-  def _step(self, action, obs ):
+  def _step(self, action, obs, next_day_obs ):
   # def _step(self, action, retrn ):
     """ Given an action and return for prior period, calculates costs, navs,
         etc and returns the reward and a  summary of the day's activity. """
+    retrn = 0
+    try:
+      retrn = next_day_obs['Return']
+    except Exception as e:
+      print('Exception - {}'.format(e))
 
-    # bod_posn = 0.0 if self.step == 0 else self.posns[self.step-1]
-    # bod_nav  = 1.0 if self.step == 0 else self.navs[self.step-1]
-    # mkt_nav  = 1.0 if self.step == 0 else self.mkt_nav[self.step-1]
+    bod_posn = 0.0 if self.step == 0 else self.posns[self.step-1]
+    bod_nav  = 1.0 if self.step == 0 else self.navs[self.step-1]
+    mkt_nav  = 1.0 if self.step == 0 else self.mkt_nav[self.step-1]
 
-    # self.mkt_retrns[self.step] = retrn
-    self.actions[self.step] = action
-    
-    # self.posns[self.step] = action - 1     
-    # self.trades[self.step] = self.posns[self.step] - bod_posn
-    
-    # trade_costs_pct = abs(self.trades[self.step]) * self.trading_cost_bps 
-    # self.costs[self.step] = trade_costs_pct +  self.time_cost_bps
-    # reward = ( (bod_posn * retrn) - self.costs[self.step] )
-    # self.strat_retrns[self.step] = reward
-
-    # if self.step != 0 :
-    #   self.navs[self.step] =  bod_nav * (1 + self.strat_retrns[self.step-1])
-    #   self.mkt_nav[self.step] =  mkt_nav * (1 + self.mkt_retrns[self.step-1])
-    
-    # info = { 'reward': reward, 'nav':self.navs[self.step], 'costs':self.costs[self.step], 'step':self.step }
-
-    retrn = obs[:, 2][-1]
     reward = 0
-    if (action == 0 and retrn < 0) or (action == 2 and 0 < retrn):
+    # 0 - flat, 1 - buy, 2 - sell
+    if (action == 2 and retrn < 0) or (action == 1 and 0 < retrn):
       reward = 1
-    elif (action == 0 and 0 < retrn) or (action == 2 and retrn < 0):
+    elif (action == 2 and 0 < retrn) or (action == 1 and retrn < 0):
       reward = -1
     else:
-      reward = 0
+      # reward = 1 if 0 < retrn else -1
+      reward = ( (bod_posn * retrn) - self.costs[self.step] )
 
-    info = {}
+    self.mkt_retrns[self.step] = retrn
+    self.actions[self.step] = action
+    
+    self.posns[self.step] = action - 1     
+    self.trades[self.step] = self.posns[self.step] - bod_posn
+    
+    trade_costs_pct = abs(self.trades[self.step]) * self.trading_cost_bps 
+    self.costs[self.step] = trade_costs_pct +  self.time_cost_bps
+    # reward = ( (bod_posn * retrn) - self.costs[self.step] )
+    self.strat_retrns[self.step] = reward
+
+    if self.step != 0 :
+      self.navs[self.step] =  bod_nav * (1 + self.strat_retrns[self.step-1])
+      self.mkt_nav[self.step] =  mkt_nav * (1 + self.mkt_retrns[self.step-1])
+    
+    info = { 'reward': reward, 'nav':self.navs[self.step], 'costs':self.costs[self.step], 'step':self.step }
     self.step += 1      
     return reward, info
 
@@ -269,6 +289,7 @@ class Render(object):
       #                                             where=self.reward_arr[:self.step_st+self.obs_len].cumsum()<=0,
       #                                             facecolor=(0, 1, 0, 0.2), edgecolor=(0, 1, 0, 0.9), linewidth=1)
 
+      # 0 - flat, 1 - buy, 2 - sell
       action = actions[:step]
       trade_x = action.nonzero()[0]
       trade_x_buy = [i for i in trade_x if actions[i]==1]
@@ -345,9 +366,9 @@ class TradingEnv(gym.Env):
   contiguous days sampled from the overall dataset. Each day is one
   'step' within the gym and for each step, the algo has a choice:
 
-  SHORT (0)
-  FLAT (1)
-  LONG (2)
+  FLAT (0)
+  LONG (1)
+  SHORT (2)
 
   If you trade, you will be charged, by default, 10 BPS of the size of
   your trade. Thus, going from short to long costs twice as much as
@@ -393,18 +414,22 @@ class TradingEnv(gym.Env):
     observation, done = self.src._step()
     # Close    Volume     Return  ClosePctl  VolumePctl
     # yret = observation[:,2]
+    next_day_obs = pd.DataFrame()
+    if not done:
+      next_day_obs = self.src._next_day_obs()
 
-    reward, info = self.sim._step( action, observation )
+    reward, info = self.sim._step( action, observation, next_day_obs )
       
     #info = { 'pnl': daypnl, 'nav':self.nav, 'costs':costs }
 
-    return observation, reward, done, info
+    return observation.values, reward, done, info
   
   def _reset(self):
     self.src.reset()
     self.sim.reset()
     self.chart.reset()
-    return self.src._step()[0]
+    obs, _ = self.src._step()
+    return obs.values
     
   # def _render(self, mode='human', close=False):
   #   #... TODO
