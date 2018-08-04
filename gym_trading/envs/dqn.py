@@ -32,7 +32,7 @@ class DQN:
         self.output_size = output_size
         self.net_name = name
         self.seq_length = 7
-        self.hidden_dim = 150
+        self.hidden_dim = 30
 
         self._build_network()
 
@@ -71,8 +71,9 @@ class DQN:
         #     self._train = optimizer.minimize(self._loss)
 
         with tf.variable_scope(self.net_name):
-            n_layers = 3
-            self.state = tf.placeholder(tf.float32, [None, self.input_shape[0], self.input_shape[1]], name='state') # time, batch, in
+            n_layers = 1
+            batch_size, state_size = self.input_shape[0], self.input_shape[1]
+            self.state = tf.placeholder(tf.float32, [None, batch_size, state_size], name='state') # time, batch, in
             self.actions = tf.placeholder(tf.int32, [None], name='actions') #
 
             # layers = [tf.contrib.rnn.BasicLSTMCell(num_units=self.hidden_dim) for _ in range(n_layers)]
@@ -81,8 +82,15 @@ class DQN:
 
             # hidden_state = states[-1][1]
 
+            state_placeholder = tf.placeholder(tf.float32, [n_layers, 2, batch_size, state_size])
+            l = tf.unstack(state_placeholder, axis=0)
+            rnn_tuple_state = rnn_tuple_state = tuple(
+                    [tf.nn.rnn_cell.LSTMStateTuple(l[idx][0],l[idx][1])
+                        for idx in range(n_layers)]
+            )
+
             cell = tf.contrib.rnn.BasicLSTMCell(num_units=self.hidden_dim)
-            self.outputs, states = tf.nn.dynamic_rnn(cell, self.state, dtype=tf.float32)
+            self.outputs, states = tf.nn.dynamic_rnn(cell, self.state, dtype=tf.float32, initial_state=state_placeholder)
 
             self.logits = tf.layers.dense(states[1], self.output_size, name='softmax')
             xentropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.actions, logits=self.logits)

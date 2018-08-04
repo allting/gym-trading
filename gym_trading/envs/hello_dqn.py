@@ -49,16 +49,20 @@ def replay_train(mainDQN: dqn.DQN, targetDQN: dqn.DQN, train_batch: list) -> flo
 
     X = states
     result = targetDQN.predict(next_states)
+    rewards = rewards.reshape((64,1))
+    done = done.reshape((64,1))
     # max_result = np.max(result, axis=1)
-    Q_target = DISCOUNT_RATE * result * ~done
+    Q_target = rewards + DISCOUNT_RATE * result * ~done
     # Q_target = rewards + DISCOUNT_RATE * result * ~done
 
     y = mainDQN.predict(states)
-    y[np.arange(int(len(X)/INPUT_SHAPE[0])), actions] = Q_target
-
+    n = np.arange(int(len(X)/INPUT_SHAPE[0]))
     argmax_y = np.argmax(y, axis=1)
+    argmax_q = np.argmax(Q_target, axis=1)
+    argmax_y[n] = argmax_q
+    print('train-q:{}, y:{}'.format(argmax_q, argmax_y))
     # Train our network using target and predicted Q values on each episode
-    return mainDQN.update(X, argmax_y)
+    return mainDQN.update(X, argmax_q)
 
 
 def get_copy_var_ops(*, dest_scope_name: str, src_scope_name: str) -> List[tf.Operation]:
@@ -137,6 +141,12 @@ def main():
 
                 # Save the experience to our buffer
                 replay_buffer.append((state, action, reward, next_state, done))
+
+                # if len(replay_buffer) > BATCH_SIZE:
+                #     minibatch = random.sample(replay_buffer, BATCH_SIZE)
+                #     loss, train = replay_train(mainDQN, targetDQN, minibatch)
+                #     if step_count % 100 == 0:
+                #         print('\t{}/{}-Loss:{}, train:{}'.format(episode, step_count, loss, train))
 
                 if len(replay_buffer) > BATCH_SIZE:
                     minibatch = random.sample(replay_buffer, BATCH_SIZE)
