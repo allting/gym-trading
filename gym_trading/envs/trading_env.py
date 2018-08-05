@@ -199,7 +199,7 @@ class TradingSim(object) :
       reward = -1
     else:
       # reward = 1 if 0 < retrn else -1
-      reward = max(( (bod_posn * retrn) - self.costs[self.step] ), 1)
+      reward = min(( (bod_posn * retrn) - self.costs[self.step] ), 1)
 
     self.mkt_retrns[self.step] = retrn
     self.actions[self.step] = action

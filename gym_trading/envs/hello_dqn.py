@@ -27,7 +27,7 @@ OUTPUT_SIZE = env.action_space.n
 
 DISCOUNT_RATE = 0.99
 REPLAY_MEMORY = 50000
-MAX_EPISODES = 5
+MAX_EPISODES = 10
 BATCH_SIZE = 64
 TARGET_UPDATE_FREQUENCY = 5
 
@@ -98,7 +98,9 @@ def bot_play(mainDQN: dqn.DQN, env: gym.Env) -> None:
 
 def main():
     start = timeit.default_timer()
-    # store the previous observations in replay memory
+
+    tf.reset_default_graph()
+   # store the previous observations in replay memory
     replay_buffer = deque(maxlen=REPLAY_MEMORY)
 
     last_100_game_reward = deque(maxlen=100)
@@ -106,6 +108,17 @@ def main():
     with tf.Session() as sess:
         mainDQN = dqn.DQN(sess, INPUT_SHAPE, OUTPUT_SIZE, name="main")
         targetDQN = dqn.DQN(sess, INPUT_SHAPE, OUTPUT_SIZE, name="target")
+
+        if args.test is True:
+            saver = tf.train.Saver()
+            saver.restore(sess, os.getcwd()+'/model.ckpt')
+            print('Model restored.')
+            bot_play(targetDQN, env)
+
+            stop = timeit.default_timer()
+            print('Estimate time {} for {} Episodes'.format(stop-start, MAX_EPISODES))
+            return
+        
         sess.run(tf.global_variables_initializer())
 
         # initial copy q_net -> target_net
@@ -182,9 +195,6 @@ def main():
         saver = tf.train.Saver()
         save_path = saver.save(sess, os.getcwd()+"/model.ckpt")
         print("Model saved in file: %s" % save_path)
-
-        if args.test is True:
-            bot_play(targetDQN, env)
 
 
 if __name__ == "__main__":

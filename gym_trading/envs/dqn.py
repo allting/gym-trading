@@ -119,8 +119,7 @@ class DQN:
         
         # return self.session.run(self._train, feed_dict={self.state: x})
         # return self.logits.eval(feed_dict={self.state: x})
-        result = self.session.run(self._pred, feed_dict={self.state: x})
-        return result
+        return self.session.run(self._pred, feed_dict={self.state: x})
         # return np.argmax(result, axis=1)
         # return tf.argmax(result, 1)
 
