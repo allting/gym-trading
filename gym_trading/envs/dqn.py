@@ -74,7 +74,7 @@ class DQN:
             n_layers = 1
             batch_size, state_size = self.input_shape[0], self.input_shape[1]
             self.state = tf.placeholder(tf.float32, [None, batch_size, state_size], name='state') # time, batch, in
-            self.actions = tf.placeholder(tf.int32, [None], name='actions') #
+            self.actions = tf.placeholder(tf.int32, [None, self.output_size], name='actions') #
 
             # layers = [tf.contrib.rnn.BasicLSTMCell(num_units=self.hidden_dim) for _ in range(n_layers)]
             # multi_cell = tf.contrib.rnn.MultiRNNCell(layers)
@@ -82,24 +82,25 @@ class DQN:
 
             # hidden_state = states[-1][1]
 
-            state_placeholder = tf.placeholder(tf.float32, [n_layers, 2, batch_size, state_size])
-            l = tf.unstack(state_placeholder, axis=0)
-            rnn_tuple_state = rnn_tuple_state = tuple(
-                    [tf.nn.rnn_cell.LSTMStateTuple(l[idx][0],l[idx][1])
-                        for idx in range(n_layers)]
-            )
+            # state_placeholder = tf.placeholder(tf.float32, [n_layers, 2, batch_size, state_size])
+            # l = tf.unstack(state_placeholder, axis=0)
+            # rnn_tuple_state = tuple(
+            #     [tf.nn.rnn_cell.LSTMStateTuple(l[idx][0],l[idx][1])
+            #         for idx in range(n_layers)]
+            # )
 
             cell = tf.contrib.rnn.BasicLSTMCell(num_units=self.hidden_dim)
-            self.outputs, states = tf.nn.dynamic_rnn(cell, self.state, dtype=tf.float32, initial_state=state_placeholder)
+            self.outputs, states = tf.nn.dynamic_rnn(cell, self.state, dtype=tf.float32)
 
             self.logits = tf.layers.dense(states[1], self.output_size, name='softmax')
-            xentropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.actions, logits=self.logits)
+            xentropy = tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.actions, logits=self.logits)
             self._loss = tf.reduce_mean(xentropy, name='loss')
 
+            self._pred = tf.nn.softmax(self.logits)
             optimizer = tf.train.AdamOptimizer(learning_rate=l_rate)
             self._train = optimizer.minimize(self._loss)
-            self._correct = tf.nn.in_top_k(self.logits, self.actions, 1)
-            self._accuracy = tf.reduce_mean(tf.cast(self._correct, tf.float32))
+            # self._correct = tf.nn.in_top_k(self.logits, self.actions, 1)
+            # self._accuracy = tf.reduce_mean(tf.cast(self._correct, tf.float32))
 
 
     def predict(self, state: np.ndarray) -> np.ndarray:
@@ -117,7 +118,9 @@ class DQN:
             print('Error:{}'.format(e))
         
         # return self.session.run(self._train, feed_dict={self.state: x})
-        return self.logits.eval(feed_dict={self.state: x})
+        # return self.logits.eval(feed_dict={self.state: x})
+        result = self.session.run(self._pred, feed_dict={self.state: x})
+        return result
         # return np.argmax(result, axis=1)
         # return tf.argmax(result, 1)
 

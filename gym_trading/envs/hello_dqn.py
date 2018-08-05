@@ -26,7 +26,7 @@ OUTPUT_SIZE = env.action_space.n
 
 DISCOUNT_RATE = 0.99
 REPLAY_MEMORY = 50000
-MAX_EPISODES = 1
+MAX_EPISODES = 3
 BATCH_SIZE = 64
 TARGET_UPDATE_FREQUENCY = 5
 
@@ -48,21 +48,15 @@ def replay_train(mainDQN: dqn.DQN, targetDQN: dqn.DQN, train_batch: list) -> flo
     # return mainDQN.update(X, y)
 
     X = states
-    result = targetDQN.predict(next_states)
-    rewards = rewards.reshape((64,1))
-    done = done.reshape((64,1))
-    # max_result = np.max(result, axis=1)
-    Q_target = rewards + DISCOUNT_RATE * result * ~done
-    # Q_target = rewards + DISCOUNT_RATE * result * ~done
+    result = targetDQN.predict(states)
+
+    Q_target = rewards + DISCOUNT_RATE * np.max(result, axis=1)
 
     y = mainDQN.predict(states)
-    n = np.arange(int(len(X)/INPUT_SHAPE[0]))
-    argmax_y = np.argmax(y, axis=1)
-    argmax_q = np.argmax(Q_target, axis=1)
-    argmax_y[n] = argmax_q
-    print('train-q:{}, y:{}'.format(argmax_q, argmax_y))
-    # Train our network using target and predicted Q values on each episode
-    return mainDQN.update(X, argmax_q)
+    y[np.arange(int(len(X)/INPUT_SHAPE[0])), actions] = Q_target
+    # print('{}'.format(y))
+    return mainDQN.update(X, y)
+
 
 
 def get_copy_var_ops(*, dest_scope_name: str, src_scope_name: str) -> List[tf.Operation]:
@@ -130,8 +124,8 @@ def main():
                     action = env.action_space.sample()
                 else:
                     # Choose an action by greedily from the Q-network
-                    action = np.argmax(mainDQN.predict(state))
-                    action = np.argmax(action, axis=1)
+                    action = mainDQN.predict(state)
+                    action = np.argmax(action, axis=1)[0]
 
                 # Get new state and reward from environment
                 next_state, reward, done, info = env.step(action)
@@ -151,7 +145,7 @@ def main():
                 if len(replay_buffer) > BATCH_SIZE:
                     minibatch = random.sample(replay_buffer, BATCH_SIZE)
                     loss, train = replay_train(mainDQN, targetDQN, minibatch)
-                    if step_count % 100 == 0:
+                    if step_count % 200 == 0:
                         print('\t{}/{}-Loss:{}, train:{}'.format(episode, step_count, loss, train))
 
                 if step_count % TARGET_UPDATE_FREQUENCY == 0:
@@ -175,6 +169,8 @@ def main():
                 if avg_reward > 199:
                     print(f"Game Cleared in {episode} episodes with avg reward {avg_reward}")
                     break
+        
+        sess.run(copy_ops)
         
         stop = timeit.default_timer()
         print('Estimate time {} for {} Episodes'.format(stop-start, MAX_EPISODES))

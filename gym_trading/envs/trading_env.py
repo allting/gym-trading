@@ -82,9 +82,9 @@ class QuandlEnvSrc(object):
       #   macd_analyst.append(0) # Hold
     df['MACD_Analyst'] = macd_analyst
 
-    # df = df[ ~np.isnan(df.Volume)][['Close','Volume']]
+    df = df[ ~np.isnan(df.Volume)][['Close','Volume']]
     # we calculate returns and percentiles, then kill nans
-    # df = df[['Close','Volume']]   
+    df = df[['Close','Volume']]   
     df.Volume.replace(0,1,inplace=True) # days shouldn't have zero volume..
     df['Return'] = (df.Close-df.Close.shift())/df.Close.shift()
     pctrank = lambda x: pd.Series(x).rank(pct=True).iloc[-1]
@@ -92,10 +92,10 @@ class QuandlEnvSrc(object):
     df['VolumePctl'] = df.Volume.expanding(self.MinPercentileDays).apply(pctrank)
     df.dropna(axis=0,inplace=True)
     R = df.Return
-    dfSMA = df.SMA
-    dfBBUpper, dfBBMiddle, dfBBLower = df['BB_Upper'], df['BB_Middle'], df['BB_Lower']
-    dfSTCHSlowK, dfSTCHSlowD = df['STCH_SlowK'], df['STCH_SlowD']
-    dfMACD, dfMACDSignal, dfMACDHist = df['MACD'], df['MACD_Signal'], df['MACD_Hist']
+    # dfSMA = df.SMA
+    # dfBBUpper, dfBBMiddle, dfBBLower = df['BB_Upper'], df['BB_Middle'], df['BB_Lower']
+    # dfSTCHSlowK, dfSTCHSlowD = df['STCH_SlowK'], df['STCH_SlowD']
+    # dfMACD, dfMACDSignal, dfMACDHist = df['MACD'], df['MACD_Signal'], df['MACD_Hist']
 
     if scale:
       mean_values = df.mean(axis=0)
@@ -103,10 +103,10 @@ class QuandlEnvSrc(object):
       df = (df - np.array(mean_values))/ np.array(std_values)
 
     df['Return'] = R # we don't want our returns scaled
-    df['SMA'] = dfSMA
-    df['BB_Upper'], df['BB_Middle'], df['BB_Lower'] = dfBBUpper, dfBBMiddle, dfBBLower
-    df['STCH_SlowK'], df['STCH_SlowD'] = dfSTCHSlowK, dfSTCHSlowD
-    df['MACD'], df['MACD_Signal'], df['MACD_Hist'] = dfMACD, dfMACDSignal, dfMACDHist
+    # df['SMA'] = dfSMA
+    # df['BB_Upper'], df['BB_Middle'], df['BB_Lower'] = dfBBUpper, dfBBMiddle, dfBBLower
+    # df['STCH_SlowK'], df['STCH_SlowD'] = dfSTCHSlowK, dfSTCHSlowD
+    # df['MACD'], df['MACD_Signal'], df['MACD_Hist'] = dfMACD, dfMACDSignal, dfMACDHist
 
     self.min_values = df.min(axis=0)
     self.max_values = df.max(axis=0)
@@ -199,7 +199,7 @@ class TradingSim(object) :
       reward = -1
     else:
       # reward = 1 if 0 < retrn else -1
-      reward = ( (bod_posn * retrn) - self.costs[self.step] )
+      reward = max(( (bod_posn * retrn) - self.costs[self.step] ), 1)
 
     self.mkt_retrns[self.step] = retrn
     self.actions[self.step] = action
