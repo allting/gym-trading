@@ -27,7 +27,7 @@ OUTPUT_SIZE = env.action_space.n
 
 DISCOUNT_RATE = 0.99
 REPLAY_MEMORY = 50000
-MAX_EPISODES = 3
+MAX_EPISODES = 5
 BATCH_SIZE = 64
 TARGET_UPDATE_FREQUENCY = 5
 
@@ -51,12 +51,13 @@ def replay_train(mainDQN: dqn.DQN, targetDQN: dqn.DQN, train_batch: list) -> flo
     # return mainDQN.update(X, y)
 
     X = states
-    result = targetDQN.predict(states)
+    result = targetDQN.predict(next_states)
 
     Q_target = rewards + DISCOUNT_RATE * np.max(result, axis=1)
 
     y = mainDQN.predict(states)
-    y[np.arange(int(len(X)/INPUT_SHAPE[0])), actions] = Q_target
+    # y[np.arange(int(len(X)/INPUT_SHAPE[0])), actions] = Q_target
+    y[np.arange(len(result)), actions] = Q_target
     # print('{}'.format(y))
     return mainDQN.update(X, y)
 
