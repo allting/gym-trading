@@ -11,6 +11,7 @@ import random
 from typing import List
 import timeit
 import os
+from argparse import ArgumentParser
 
 pd.set_option('display.width',500)
 
@@ -29,6 +30,8 @@ REPLAY_MEMORY = 50000
 MAX_EPISODES = 3
 BATCH_SIZE = 64
 TARGET_UPDATE_FREQUENCY = 5
+
+args = None
 
 def replay_train(mainDQN: dqn.DQN, targetDQN: dqn.DQN, train_batch: list) -> float:
     states = np.vstack([x[0] for x in train_batch])
@@ -179,10 +182,15 @@ def main():
         save_path = saver.save(sess, os.getcwd()+"/model.ckpt")
         print("Model saved in file: %s" % save_path)
 
-        bot_play(targetDQN, env)
+        if args.test is True:
+            bot_play(targetDQN, env)
 
 
 if __name__ == "__main__":
+    parser = ArgumentParser()
+    parser.add_argument('-t', dest='test', action='store_true')
+    parser.set_defaults(test=False)
+    args = parser.parse_args()
     main()
 
 # obs = []
