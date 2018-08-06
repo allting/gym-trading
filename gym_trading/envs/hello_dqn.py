@@ -27,7 +27,7 @@ OUTPUT_SIZE = env.action_space.n
 
 DISCOUNT_RATE = 0.99
 REPLAY_MEMORY = 50000
-MAX_EPISODES = 10
+MAX_EPISODES = 3
 BATCH_SIZE = 64
 TARGET_UPDATE_FREQUENCY = 5
 
@@ -83,8 +83,8 @@ def bot_play(mainDQN: dqn.DQN, env: gym.Env) -> None:
     reward_sum = 0
 
     while True:
-
-        env.render()
+        if args.visual is True:
+            env.render()
         action = mainDQN.predict(state)
         action = np.argmax(action, axis=1)
         print(action)
@@ -137,12 +137,13 @@ def main():
             episode_start = timeit.default_timer()
 
             while not done:
-                if np.random.rand() < e:
-                    action = env.action_space.sample()
-                else:
-                    # Choose an action by greedily from the Q-network
-                    action = mainDQN.predict(state)
-                    action = np.argmax(action, axis=1)[0]
+                # if np.random.rand() < e:
+                #     action = env.action_space.sample()
+                # else:
+                #     # Choose an action by greedily from the Q-network
+                #     action = mainDQN.predict(state)
+                #     action = np.argmax(action, axis=1)[0]
+                action = env.action_space.sample()
 
                 # Get new state and reward from environment
                 next_state, reward, done, info = env.step(action)
@@ -196,11 +197,18 @@ def main():
         save_path = saver.save(sess, os.getcwd()+"/model.ckpt")
         print("Model saved in file: %s" % save_path)
 
+        if args.play is True:
+            bot_play(targetDQN, env)
+
 
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument('-t', dest='test', action='store_true')
     parser.set_defaults(test=False)
+    parser.add_argument('-v', dest='visual', action='store_true')
+    parser.set_defaults(visual=False)
+    parser.add_argument('-p', dest='play', action='store_true')
+    parser.set_defaults(play=False)
     args = parser.parse_args()
     main()
 

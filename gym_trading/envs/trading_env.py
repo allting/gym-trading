@@ -196,7 +196,7 @@ class TradingSim(object) :
     if (action == 2 and retrn < 0) or (action == 1 and 0 < retrn):
       reward = 1
     elif (action == 2 and 0 < retrn) or (action == 1 and retrn < 0):
-      reward = -1
+      reward = -10
     else:
       # reward = 1 if 0 < retrn else -1
       reward = min(( (bod_posn * retrn) - self.costs[self.step] ), 1)
