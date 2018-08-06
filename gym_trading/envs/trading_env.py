@@ -56,6 +56,7 @@ class QuandlEnvSrc(object):
     self.auth = auth
     self.days = days+1
     log.info('getting data for %s from quandl...',QuandlEnvSrc.Name)
+    quandl.ApiConfig.api_key = '9wNuruY1ooQsvTSv5LkH'
     df = quandl.get(self.name) if self.auth=='' else quandl.get(self.name, authtoken=self.auth)
     log.info('got data for %s from quandl...',QuandlEnvSrc.Name)
 
@@ -98,9 +99,12 @@ class QuandlEnvSrc(object):
     # dfMACD, dfMACDSignal, dfMACDHist = df['MACD'], df['MACD_Signal'], df['MACD_Hist']
 
     if scale:
-      mean_values = df.mean(axis=0)
-      std_values = df.std(axis=0)
-      df = (df - np.array(mean_values))/ np.array(std_values)
+      # mean_values = df.mean(axis=0)
+      # std_values = df.std(axis=0)
+      # df = (df - np.array(mean_values))/ np.array(std_values)
+      max_values = df.max(axis=0)
+      min_values = df.min(axis=0)
+      df = (df - min_values) / (max_values - min_values)
 
     df['Return'] = R # we don't want our returns scaled
     # df['SMA'] = dfSMA
@@ -138,8 +142,10 @@ class QuandlEnvSrc(object):
     return obs,done
 
   def _next_day_obs(self):
+    end = len(self.data)-self.idx
+    end = max(min(end, 30), 1)
     try:
-      obs = self.data.iloc[self.idx]
+      obs = self.data.iloc[self.idx:self.idx+end]
     except Exception as e:
       print('error:{}'.format(e))
 
@@ -182,8 +188,10 @@ class TradingSim(object) :
     """ Given an action and return for prior period, calculates costs, navs,
         etc and returns the reward and a  summary of the day's activity. """
     retrn = 0
+    mean_retrn = 0
     try:
-      retrn = next_day_obs['Return']
+      retrn = next_day_obs['Return'][-1]
+      mean_retrn = next_day_obs['Return'].mean()
     except Exception as e:
       print('Exception - {}'.format(e))
 
@@ -194,12 +202,16 @@ class TradingSim(object) :
     reward = 0
     # 0 - flat, 1 - buy, 2 - sell
     if (action == 2 and retrn < 0) or (action == 1 and 0 < retrn):
-      reward = 1
+      reward = 1 * abs(mean_retrn)
     elif (action == 2 and 0 < retrn) or (action == 1 and retrn < 0):
-      reward = -10
+      reward = -(5 * abs(mean_retrn))
     else:
       # reward = 1 if 0 < retrn else -1
-      reward = min(( (bod_posn * retrn) - self.costs[self.step] ), 1)
+      # reward = min(( (bod_posn * retrn) - self.costs[self.step] ), 1)
+      if 0 < len(next_day_obs):
+        reward = mean_retrn / len(next_day_obs)
+      else:
+        reward = mean_retrn
 
     self.mkt_retrns[self.step] = retrn
     self.actions[self.step] = action

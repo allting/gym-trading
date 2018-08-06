@@ -72,4 +72,4 @@ cem.fit(env, nb_steps=15000, visualize=False, verbose=2)
 cem.save_weights('cem_{}_params.h5f'.format(ENV_NAME), overwrite=True)
 
 # Finally, evaluate our algorithm for 5 episodes.
-cem.test(env, nb_episodes=3, visualize=False, verbose=2)
+cem.test(env, nb_episodes=1, visualize=True, verbose=1)
