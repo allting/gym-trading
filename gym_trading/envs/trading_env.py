@@ -56,7 +56,6 @@ class QuandlEnvSrc(object):
     self.auth = auth
     self.days = days+1
     log.info('getting data for %s from quandl...',QuandlEnvSrc.Name)
-    quandl.ApiConfig.api_key = '9wNuruY1ooQsvTSv5LkH'
     df = quandl.get(self.name) if self.auth=='' else quandl.get(self.name, authtoken=self.auth)
     log.info('got data for %s from quandl...',QuandlEnvSrc.Name)
 
@@ -75,13 +74,10 @@ class QuandlEnvSrc(object):
     
     macd_analyst = [0]*len(df)
     for i in range(1, len(df)):
-      if df['MACD_Signal'][i] < df['MACD'][i] and df['MACD'][i-1] <= df['MACD_Signal'][i-1]:
-        macd_analyst[i] = 2 # BUY
-      elif df['MACD'][i] < df['MACD_Signal'][i] and df['MACD_Signal'][i-1] <= df['MACD'][i-1]:
-        macd_analyst[i] = 1 # Sell
-      # else:
-      #   macd_analyst.append(0) # Hold
-    df['MACD_Analyst'] = macd_analyst
+      if df['MACD'][i-1] <= df['MACD_Signal'][i-1] and df['MACD_Signal'][i] < df['MACD'][i]:
+        macd_analyst[i] = 1 # BUY
+      elif df['MACD_Signal'][i-1] <= df['MACD'][i-1] and df['MACD'][i] < df['MACD_Signal'][i]:
+        macd_analyst[i] = 2 # Sell
 
     df = df[ ~np.isnan(df.Volume)][['Close','Volume']]
     # we calculate returns and percentiles, then kill nans
@@ -91,7 +87,7 @@ class QuandlEnvSrc(object):
     pctrank = lambda x: pd.Series(x).rank(pct=True).iloc[-1]
     df['ClosePctl'] = df.Close.expanding(self.MinPercentileDays).apply(pctrank)
     df['VolumePctl'] = df.Volume.expanding(self.MinPercentileDays).apply(pctrank)
-    df.dropna(axis=0,inplace=True)
+
     R = df.Return
     # dfSMA = df.SMA
     # dfBBUpper, dfBBMiddle, dfBBLower = df['BB_Upper'], df['BB_Middle'], df['BB_Lower']
@@ -107,10 +103,12 @@ class QuandlEnvSrc(object):
       df = (df - min_values) / (max_values - min_values)
 
     df['Return'] = R # we don't want our returns scaled
+    df['MACD_Analyst'] = macd_analyst
     # df['SMA'] = dfSMA
     # df['BB_Upper'], df['BB_Middle'], df['BB_Lower'] = dfBBUpper, dfBBMiddle, dfBBLower
     # df['STCH_SlowK'], df['STCH_SlowD'] = dfSTCHSlowK, dfSTCHSlowD
     # df['MACD'], df['MACD_Signal'], df['MACD_Hist'] = dfMACD, dfMACDSignal, dfMACDHist
+    df.dropna(axis=0,inplace=True)
 
     self.min_values = df.min(axis=0)
     self.max_values = df.max(axis=0)
@@ -450,15 +448,19 @@ class TradingEnv(gym.Env):
 
   # some convenience functions:
   
-  def run_strat(self,  strategy, return_df=True):
+  def run_strat(self,  strategy, render=False, return_df=True):
     """run provided strategy, returns dataframe with all steps"""
     observation = self._reset()
     done = False
+    rewards = 0
     while not done:
       action = strategy( observation, self ) # call strategy
       observation, reward, done, info = self.step(action)
+      if render:
+        self._render()
+      rewards += reward
 
-    return self.sim.to_df() if return_df else None
+    return rewards, self.sim.to_df() if return_df else None
       
   def run_strats( self, strategy, episodes=1, write_log=False, return_df=True):
     """ run provided strategy the specified # of times, possibly
@@ -475,15 +477,16 @@ class TradingEnv(gym.Env):
       need_df = write_log or return_df
 
     alldf = None
-        
+    rewards = 0    
     for i in range(episodes):
-      df = self.run_strat(strategy, return_df=need_df)
+      reward, df = self.run_strat(strategy, return_df=need_df)
+      rewards += reward
       if write_log:
         df.to_csv(logfile, mode='a')
       if return_df:
         alldf = df if alldf is None else pd.concat([alldf,df], axis=0)
             
-    return alldf
+    return rewards, alldf
 
   def _render(self, mode='human', close=False):
     self.chart.render(self.src.step, self.sim.actions)  
